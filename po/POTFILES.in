@@ -1,0 +1,5 @@
+panel-plugin/applauncher-plugin.desktop.in.in
+panel-plugin/applauncher-plugin.c
+panel-plugin/appfinder-model.c
+panel-plugin/applauncher-window.c
+
