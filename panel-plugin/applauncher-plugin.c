@@ -56,6 +56,7 @@ struct _ApplauncherPlugin
 
 	int                panel_size;
 	GtkWidget         *button;
+	GtkWidget         *img_tray;
 
 	ApplauncherWindow *popup_window;
 };
@@ -156,6 +157,17 @@ applauncher_plugin_size_changed (XfcePanelPlugin *panel_plugin, gint size)
 
 	plugin->panel_size = size;
 
+	GdkPixbuf *pix = gtk_icon_theme_load_icon (gtk_icon_theme_get_default (),
+                                               "applauncher-plugin-panel",
+                                               size,
+                                               GTK_ICON_LOOKUP_FORCE_SIZE, NULL);
+
+	if (pix) {
+		gtk_image_set_from_pixbuf (GTK_IMAGE (plugin->img_tray), pix);
+		gtk_image_set_pixel_size (GTK_IMAGE (plugin->img_tray), size);
+		g_object_unref (G_OBJECT (pix));
+	}
+
 	return TRUE;
 }
 
@@ -201,9 +213,9 @@ applauncher_plugin_init (ApplauncherPlugin *plugin)
                                     GTK_ICON_LOOKUP_FORCE_SIZE, NULL);
 
 	if (pix) {
-		GtkWidget *img_tray = gtk_image_new_from_pixbuf (pix);
-		gtk_image_set_pixel_size (GTK_IMAGE (img_tray), PANEL_TRAY_ICON_SIZE);
-		gtk_container_add (GTK_CONTAINER (plugin->button), img_tray);
+		plugin->img_tray = gtk_image_new_from_pixbuf (pix);
+		gtk_image_set_pixel_size (GTK_IMAGE (plugin->img_tray), PANEL_TRAY_ICON_SIZE);
+		gtk_container_add (GTK_CONTAINER (plugin->button), plugin->img_tray);
 		g_object_unref (G_OBJECT (pix));
 	}
 

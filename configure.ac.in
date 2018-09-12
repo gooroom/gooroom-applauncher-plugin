@@ -82,8 +82,6 @@ AC_OUTPUT([
 Makefile
 theme/Makefile
 icons/Makefile
-icons/32x32/Makefile
-icons/32x32/apps/Makefile
 icons/scalable/Makefile
 icons/scalable/apps/Makefile
 panel-plugin/Makefile
