@@ -37,19 +37,22 @@ tooltip image {
 }
 
 #search-entry {
-    padding: 7px 9px;
-    border-radius: 4px;
-    color: #eeeeec;
-    box-shadow: 0 0 transparent;
-    selection-background-color: #00BCD4;
-    selected-color: #FFFFFF;
-    background-color: rgba(19, 25, 28, 0.54); }
+    color: rgba(207, 216, 220, 0.87);
+    box-shadow: none;
+    border: 1px solid #212B30;
+    border-image: none;
+    background-color: #2F3D44; }
     #search-entry:hover, #search-entry:focus {
-      border-color: #4a90d9; }
+        box-shadow: none;
+        border: 1px solid #00BCD4;
+        border-image: none;
+        background-color: #2F3D44;
+        color: #CFD8DC; }
+
 
 #appitem {
+  border: none;
   outline-style: none;
-  border-color: rgba(0, 0, 0, 0.7);
   border-radius: 8px;
   padding: 4px;
   color: #eeeeec;
