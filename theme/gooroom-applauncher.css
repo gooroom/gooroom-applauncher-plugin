@@ -1,0 +1,68 @@
+radio,
+.radio {
+    -gtk-icon-source: -gtk-scaled(url("assets/page-indicator-inactive.png"),
+                                  url("assets/page-indicator-inactive.png"));
+}
+
+radio:hover,
+.radio:hover {
+    -gtk-icon-source: -gtk-scaled(url("assets/page-indicator-hover.png"),
+                                  url("assets/page-indicator-hover.png"));
+}
+
+radio:checked,
+.radio:checked {
+    -gtk-icon-source: -gtk-scaled(url("assets/page-indicator-checked.png"),
+                                  url("assets/page-indicator-checked.png"));
+}
+
+radio:active,
+.radio:active {
+    -gtk-icon-source: -gtk-scaled(url("assets/page-indicator-active.png"),
+                                  url("assets/page-indicator-active.png"));
+}
+
+tooltip {
+    border-radius: 10px;
+    box-shadow: none;
+}
+
+tooltip.background {
+    background-color: rgba(255, 255, 255, 0.9);
+}
+
+tooltip label,
+tooltip image {
+    color: #373737;
+}
+
+#search-entry {
+    padding: 7px 9px;
+    border-radius: 4px;
+    color: #eeeeec;
+    box-shadow: 0 0 transparent;
+    selection-background-color: #00BCD4;
+    selected-color: #FFFFFF;
+    background-color: rgba(19, 25, 28, 0.54); }
+    #search-entry:hover, #search-entry:focus {
+      border-color: #4a90d9; }
+
+#appitem {
+  outline-style: none;
+  border-color: rgba(0, 0, 0, 0.7);
+  border-radius: 8px;
+  padding: 4px;
+  color: #eeeeec;
+  font-size: medium;
+  font-weight: bold;
+  background-image: none;
+  background-clip: padding-box;
+  background-color: transparent; }
+  #appitem:hover {
+    box-shadow: inset 0px 1px rgba(255, 255, 255, 0.1);
+    background-image: image(rgba(28, 31, 32, 0.6));
+    background-color: transparent; }
+  #appitem:focus, #appitem:checked {
+    box-shadow: inset 0px 1px rgba(255, 255, 255, 0.1);
+    background-image: image(rgba(57, 63, 65, 0.7));
+    background-color: transparent; }

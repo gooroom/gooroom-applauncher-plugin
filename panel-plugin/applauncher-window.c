@@ -1,21 +1,21 @@
 /*
- * Copyright (C) 2011 Nick Schermer <nick@xfce.org>
- * Copyright (C) 2015-2017 Gooroom <gooroom@gooroom.kr>
+ *  Copyright (C) 2015-2017 Gooroom <gooroom@gooroom.kr>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public License
+ *  as published by the Free Software Foundation; either version 2
+ *  of the License, or (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -28,485 +28,924 @@
 #include <errno.h>
 #endif
 
+#include <glib.h>
+#include <glib/gi18n.h>
+
 #include <gtk/gtk.h>
-#include <gdk/gdkkeysyms.h>
 
-#include <libxfce4ui/libxfce4ui.h>
-#include <libxfce4util/libxfce4util.h>
+#include <math.h>
 
-#include "appfinder-private.h"
+#include <gmenu-tree.h>
+
+#include "xfce-spawn.h"
+#include "panel-glib.h"
 #include "applauncher-window.h"
-#include "appfinder-model.h"
+#include "applauncher-indicator.h"
+#include "applauncher-appitem.h"
 
 
-static void       applauncher_window_finalize                      (GObject                   *object);
-static void       applauncher_window_view                          (ApplauncherWindow         *window);
-static gboolean   applauncher_window_completion_match_func         (GtkEntryCompletion        *completion,
-                                                                    const gchar               *key,
-                                                                    GtkTreeIter               *iter,
-                                                                    gpointer                   data);
-static void       applauncher_window_entry_changed                 (ApplauncherWindow         *window);
-static void       applauncher_window_entry_activate                (GtkEditable               *entry,
-                                                                    ApplauncherWindow         *window);
-static gboolean   applauncher_window_item_visible                  (GtkTreeModel              *model,
-                                                                    GtkTreeIter               *iter,
-                                                                    gpointer                   data);
-static void       applauncher_window_row_activated                 (ApplauncherWindow         *window);
-static void       applauncher_window_execute                       (ApplauncherWindow         *window);
-static gint       applauncher_window_sort_items                    (GtkTreeModel              *model,
-                                                                    GtkTreeIter               *a,
-                                                                    GtkTreeIter               *b,
-                                                                    gpointer                   data);
 
-struct _ApplauncherWindowClass
+
+static GSList *get_all_applications_from_dir (GMenuTreeDirectory *directory,
+                                              GSList             *list);
+
+struct _ApplauncherWindowPrivate
 {
-  GtkWindowClass __parent__;
-};
+	GtkWidget  *grid;
+	GtkWidget  *ent_search;
+	GtkWidget  *box_bottom;
 
-struct _ApplauncherWindow
-{
-  GtkWindow __parent__;
+	ApplauncherIndicator *pages;
 
-  XfceAppfinderModel         *model;
+	GList *grid_children;
 
-  GtkTreeModel               *sort_model;
-  GtkTreeModel               *filter_model;
+	GSList *apps;
+	GSList *filtered_apps;
 
-  GtkEntryCompletion         *completion;
+	int grid_x;
+	int grid_y;
+	int icon_size;
 
-  GtkWidget                  *entry;
-  GtkWidget                  *view;
-  GtkWidget                  *viewscroll;
+	int item_width;
+	int item_height;
 
-  GarconMenuDirectory        *filter_category;
-  gchar                      *filter_text;
+	gchar *filter_text;
 
-  guint                       idle_entry_changed_id;
+	guint idle_entry_changed_id;
 };
 
 
-
-G_DEFINE_TYPE (ApplauncherWindow, applauncher_window, GTK_TYPE_WINDOW)
-
+G_DEFINE_TYPE_WITH_PRIVATE (ApplauncherWindow, applauncher_window, GTK_TYPE_WINDOW)
 
 
-static void
-applauncher_window_class_init (ApplauncherWindowClass *klass)
+
+/* Copied from gnome-panel-3.26.0/gnome-panel/menu.c:
+ * get_applications_menu () */
+gchar *
+get_applications_menu (void)
 {
-  GObjectClass   *gobject_class;
-  GtkWidgetClass *gtkwidget_class;
+	const gchar *xdg_menu_prefx = g_getenv ("XDG_MENU_PREFIX");
 
-  gobject_class = G_OBJECT_CLASS (klass);
-  gobject_class->finalize = applauncher_window_finalize;
+	if (xdg_menu_prefx == NULL )
+		return g_strdup ("gnome-applications.menu");
+
+	if (strlen (xdg_menu_prefx) == 0)
+		return g_strdup ("gnome-applications.menu");
+
+	return g_strdup_printf ("%sapplications.menu", xdg_menu_prefx);
 }
 
 
+/* Copied from gnome-panel-3.26.0/gnome-panel/panel-run-dialog.c:
+ * get_all_applications_from_alias () */
+static GSList *
+get_all_applications_from_alias (GMenuTreeAlias *alias,
+                                 GSList         *list)
+{
+	switch (gmenu_tree_alias_get_aliased_item_type (alias))
+	{
+		case GMENU_TREE_ITEM_ENTRY:
+			/* pass on the reference */
+			list = g_slist_append (list, gmenu_tree_alias_get_aliased_entry (alias));
+			break;
+
+		case GMENU_TREE_ITEM_DIRECTORY: {
+			GMenuTreeDirectory *directory = gmenu_tree_alias_get_aliased_directory (alias);
+			list = get_all_applications_from_dir (directory, list);
+			gmenu_tree_item_unref (directory);
+			break;
+		}
+
+		default:
+			break;
+	}
+
+	return list;
+}
+
+/* Copied from gnome-panel-3.26.0/gnome-panel/panel-run-dialog.c:
+ * get_all_applications_from_dir () */
+static GSList *
+get_all_applications_from_dir (GMenuTreeDirectory *directory,
+                               GSList             *list)
+{
+	GMenuTreeIter *iter;
+	GMenuTreeItemType next_type;
+
+	iter = gmenu_tree_directory_iter (directory);
+
+	while ((next_type = gmenu_tree_iter_next (iter)) != GMENU_TREE_ITEM_INVALID) {
+		switch (next_type) {
+			case GMENU_TREE_ITEM_ENTRY:
+				list = g_slist_append (list, gmenu_tree_iter_get_entry (iter));
+			break;
+
+			case GMENU_TREE_ITEM_DIRECTORY: {
+				GMenuTreeDirectory *dir = gmenu_tree_iter_get_directory (iter);
+				list = get_all_applications_from_dir (dir, list);
+				gmenu_tree_item_unref (dir);
+				break;
+			}
+
+			case GMENU_TREE_ITEM_ALIAS: {
+				GMenuTreeAlias *alias = gmenu_tree_iter_get_alias (iter);
+				list = get_all_applications_from_alias (alias, list);
+				gmenu_tree_item_unref (alias);
+				break;
+			}
+
+			default:
+			break;
+		}
+	}
+
+	gmenu_tree_iter_unref (iter);
+
+	return list;
+}
+
+static gboolean
+has_application (GSList *list, GMenuTreeEntry *entry)
+{
+	const gchar *application_name;
+	if (entry) {
+		GAppInfo *app_info = G_APP_INFO (gmenu_tree_entry_get_app_info (entry));
+		if (app_info) {
+			application_name = g_app_info_get_name (app_info);
+		} else {
+			application_name = NULL;
+		}
+	} else {
+		application_name = NULL;
+	}
+
+	if (!application_name) return FALSE;
+
+	GSList *l = NULL;
+	for (l = list; l; l = l->next) {
+		GMenuTreeEntry *entry = (GMenuTreeEntry *)l->data;
+		if (entry) {
+			GAppInfo *app_info = G_APP_INFO (gmenu_tree_entry_get_app_info (entry));
+			if (app_info) {
+				const gchar *name = g_app_info_get_name (app_info);
+				if (g_strcmp0 (name, application_name) == 0)
+					return TRUE;
+			}
+		}
+	}
+
+	return FALSE;
+}
+
+/* Copied from gnome-panel-3.26.0/gnome-panel/panel-run-dialog.c:
+ * get_all_applications () */
+static GSList *
+get_all_applications (void)
+{
+	GMenuTree          *tree;
+	GMenuTreeDirectory *root;
+	GSList             *list = NULL;
+	gchar *applications_menu = NULL;
+
+	applications_menu = get_applications_menu ();
+
+	tree = gmenu_tree_new (applications_menu, GMENU_TREE_FLAGS_SORT_DISPLAY_NAME);
+	g_free (applications_menu);
+
+	if (!gmenu_tree_load_sync (tree, NULL)) {
+		g_object_unref (tree);
+		return NULL;
+	}
+
+	root = gmenu_tree_get_root_directory (tree);
+
+	list = get_all_applications_from_dir (root, NULL);
+
+	gmenu_tree_item_unref (root);
+	g_object_unref (tree);
+
+	return list;
+}
+
+static int
+get_total_pages (ApplauncherWindow *window, GSList *list)
+{
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	guint size = 0;
+	int num_pages = 0;
+
+	size = g_slist_length (list);
+	num_pages = (int)(size / (priv->grid_y * priv->grid_x));
+
+	if ((size %  (priv->grid_y * priv->grid_x)) > 0) {
+		num_pages += 1;
+	}
+
+	return num_pages;
+}
+
+static void
+update_pages (ApplauncherWindow *window)
+{
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	g_return_if_fail (priv->filtered_apps != NULL);
+
+	guint size = 0;
+	gint filtered_pages = 0;
+
+	size = g_slist_length (priv->filtered_apps);
+	filtered_pages = (int)(size / (priv->grid_y * priv->grid_x));
+
+	if ((size %  (priv->grid_y * priv->grid_x)) > 0) {
+		filtered_pages += 1;
+	}
+
+	// Update pages
+	if (filtered_pages > 1) {
+		gtk_widget_set_visible (GTK_WIDGET (priv->pages), TRUE);
+		GList *children = applauncher_indicator_get_children (priv->pages);
+		guint total_pages = g_list_length (children);
+
+		int p;
+		for (p = 1; p <= total_pages; p++) {
+			GtkWidget *child = g_list_nth_data (children, p - 1);
+			if (child) {
+				gboolean visible = (p > filtered_pages) ? FALSE : TRUE;
+				gtk_widget_set_visible (child, visible);
+			}
+		}
+	} else {
+		gtk_widget_set_visible (GTK_WIDGET (priv->pages), FALSE);
+	}
+}
+
+static void
+update_grid (ApplauncherWindow *window)
+{
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	gint r, c;
+	if (priv->filtered_apps == NULL) {
+		for (r = 0; r < priv->grid_x; r++) {
+			for (c = 0; c < priv->grid_y; c++) {
+				gint pos = c + (r * priv->grid_y);
+				ApplauncherAppItem *item = g_list_nth_data (priv->grid_children, pos);
+				if (item) {
+					gtk_widget_set_sensitive (GTK_WIDGET (item), FALSE);
+					applauncher_appitem_change_app (item, NULL, "", "");
+				}
+			}
+		}
+		return;
+	}
+
+	GtkIconTheme *icon_theme = gtk_icon_theme_get_default ();
+
+	gint active = applauncher_indicator_get_active (priv->pages);
+	gint item_iter = active * priv->grid_y * priv->grid_x;
+
+	for (r = 0; r < priv->grid_x; r++) {
+		for (c = 0; c < priv->grid_y; c++) {
+			gint pos = c + (r * priv->grid_y); // position in table right now
+			ApplauncherAppItem *item = g_list_nth_data (priv->grid_children, pos);
+			if (item_iter < g_slist_length (priv->filtered_apps)) {
+				GMenuTreeEntry *entry = g_slist_nth_data (priv->filtered_apps, item_iter);
+
+				if (!entry) {
+					item_iter++;
+					gtk_widget_set_sensitive (GTK_WIDGET (item), FALSE);
+					continue;
+				}
+
+				GAppInfo *app_info = G_APP_INFO (gmenu_tree_entry_get_app_info (entry));
+
+				if (!app_info) {
+					item_iter++;
+					gtk_widget_set_sensitive (GTK_WIDGET (item), FALSE);
+					continue;
+				}
+
+				GIcon *icon = g_app_info_get_icon (app_info);
+				const gchar *name = g_app_info_get_name (app_info);
+				const gchar *desc = g_app_info_get_description (app_info);
+
+				gtk_widget_set_sensitive (GTK_WIDGET (item), TRUE);
+				if (desc == NULL || g_strcmp0 (desc, "") == 0) {
+					applauncher_appitem_change_app (item, icon, name, name);
+				} else {
+					gchar *tooltip = g_strdup_printf ("%s:\n%s", name, desc);
+					applauncher_appitem_change_app (item, icon, name, tooltip);
+					g_free (tooltip);
+				}
+			} else { // fill with a blank one
+				gtk_widget_set_sensitive (GTK_WIDGET (item), FALSE);
+				applauncher_appitem_change_app (item, NULL, "", "");
+			}
+
+			item_iter++;
+		}
+	}
+
+	// Update number of pages
+	update_pages (window);
+}
+
+static void
+pages_activate_cb (ApplauncherIndicator *indicator, gpointer data)
+{
+	ApplauncherWindow *window = APPLAUNCHER_WINDOW (data);
+
+	update_grid (window);
+}
+
+static void
+search (ApplauncherWindow *window)
+{
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	GSList *l = NULL, *apps = NULL;
+	for (l = priv->apps; l; l = l->next) {
+		GMenuTreeEntry *entry = (GMenuTreeEntry *)l->data;
+
+		if (!entry) continue;
+
+		GAppInfo *app_info = G_APP_INFO (gmenu_tree_entry_get_app_info (entry));
+
+		if (!app_info) continue;
+
+		const gchar *exec = g_app_info_get_executable (app_info);
+		if (exec && panel_g_utf8_strstrcase (exec, priv->filter_text) != NULL) {
+			if (!has_application (apps, entry))
+				apps = g_slist_append (apps, entry);
+
+			continue;
+		}
+
+		const gchar *name = g_app_info_get_name (app_info);
+		if (name && panel_g_utf8_strstrcase (name, priv->filter_text) != NULL) {
+			if (!has_application (apps, entry))
+				apps = g_slist_append (apps, entry);
+
+			continue;
+		}
+
+		const gchar *desc = g_app_info_get_description (app_info);
+		if (desc && panel_g_utf8_strstrcase (desc, priv->filter_text) != NULL) {
+			if (!has_application (apps, entry))
+				apps = g_slist_append (apps, entry);
+
+			continue;
+		}
+	}
+
+	g_slist_free (priv->filtered_apps);
+	priv->filtered_apps = apps;
+
+	int total_pages = get_total_pages (window, priv->filtered_apps);
+	if (total_pages > 1) {
+		applauncher_indicator_set_active (priv->pages, 0);
+	} else {
+		update_grid (window);
+	}
+}
+
+static void
+show_error_dialog (GtkWindow  *parent,
+                   gboolean    auto_destroy,
+                   const char *title,
+                   const char *primary_text,
+                   const char *secondary_text)
+{
+	GtkWidget *dialog;
+
+	dialog = gtk_message_dialog_new (parent, 0,
+                                     GTK_MESSAGE_ERROR,
+                                     GTK_BUTTONS_CLOSE,
+                                     "%s", primary_text);
+
+	gtk_window_set_title (GTK_WINDOW (dialog), title);
+
+	if (secondary_text != NULL)
+		gtk_message_dialog_format_secondary_text (GTK_MESSAGE_DIALOG (dialog), "%s", secondary_text);
+
+	gtk_widget_show_all (dialog);
+
+	if (auto_destroy) {
+		g_signal_connect_swapped (G_OBJECT (dialog), "response",
+				G_CALLBACK (gtk_widget_destroy),
+				G_OBJECT (dialog));
+	}
+}
+
+
+static gboolean
+command_is_executable (const char   *command,
+                       int          *argcp,
+                       char       ***argvp)
+{
+	gboolean   result;
+	char     **argv;
+	char      *path;
+	int        argc;
+
+	result = g_shell_parse_argv (command, &argc, &argv, NULL);
+
+	if (!result)
+		return FALSE;
+
+	path = g_find_program_in_path (argv[0]);
+
+	if (!path) {
+		g_strfreev (argv);
+		return FALSE;
+	}
+
+	/* If we pass an absolute path to g_find_program it just returns
+	 * that absolute path without checking if it is executable. Also
+	 * make sure its a regular file so we don't try to launch
+	 * directories or device nodes.
+	 */
+	if (!g_file_test (path, G_FILE_TEST_IS_EXECUTABLE) ||
+        !g_file_test (path, G_FILE_TEST_IS_REGULAR)) {
+		g_free (path);
+		g_strfreev (argv);
+		return FALSE;
+	}
+
+	g_free (path);
+
+	if (argcp)
+		*argcp = argc;
+	if (argvp)
+		*argvp = argv;
+
+	return TRUE;
+}
+
+static gboolean
+launch_command (ApplauncherWindow *window,
+                const char        *command,
+                const char        *locale_command)
+{
+	GdkScreen  *screen;
+	gboolean    result;
+	GError     *error = NULL;
+	char      **argv;
+	int         argc;
+	GPid        pid;
+
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	const gchar *p;
+	GString *string = g_string_sized_new (100);
+
+	for (p = locale_command; *p != '\0'; ++p) {
+		if (G_UNLIKELY (p[0] == '%' && p[1] != '\0')) {
+			switch (*++p) {
+				case '%':
+					g_string_append_c (string, '%');
+					break;
+					/* skip all the other %? values for now we don't have dnd anyways */
+			}
+		} else {
+			g_string_append_c (string, *p);
+		}
+	}
+
+	if (!command_is_executable (string->str, &argc, &argv))
+		return FALSE;
+
+	screen = gtk_window_get_screen (GTK_WINDOW (window));
+
+	result = xfce_spawn_on_screen (screen, NULL,
+                                   argv, NULL, G_SPAWN_SEARCH_PATH,
+                                   TRUE, gtk_get_current_event_time (),
+                                   NULL, &error);
+
+	if (!result || error) {
+		gchar *primary = g_markup_printf_escaped (_("Could not run command '%s'"), command);
+
+		show_error_dialog (GTK_WINDOW (window), TRUE, _("Application Launching Error"), primary, error->message);
+
+		g_free (primary);
+
+		g_error_free (error);
+	}
+
+	g_strfreev (argv);
+
+	return result;
+}
+
+static void
+on_appitem_button_clicked_cb (GtkButton *button, gpointer data)
+{
+	ApplauncherWindow *window = APPLAUNCHER_WINDOW (data);
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	gint index = g_list_index (priv->grid_children, button);
+
+	if (index < 0)
+		return;
+
+	gint active = applauncher_indicator_get_active (priv->pages);
+	gint pos = index + (active * priv->grid_y * priv->grid_x);
+
+	GMenuTreeEntry *entry = g_slist_nth_data (priv->filtered_apps, pos);
+	if (!entry)
+		return;
+
+	GAppInfo *app_info = G_APP_INFO (gmenu_tree_entry_get_app_info (entry));
+	const char *cmdline = g_app_info_get_commandline (app_info);
+	gchar *command = g_strdup (cmdline);
+	command = g_strchug (command);
+
+	if (!command || !command[0]) {
+		g_free (command);
+		return;
+	}
+
+	GError *error = NULL;
+	gchar *disk = g_locale_from_utf8 (command, -1, NULL, NULL, &error);
+
+	if (!disk || error) {
+		gchar *primary = g_markup_printf_escaped (_("Could not run command '%s'"), command);
+
+		show_error_dialog (GTK_WINDOW (window), TRUE, _("Application Launching Error"), primary, error->message);
+
+		g_free (primary);
+
+		g_error_free (error);
+
+		return;
+	}
+
+    /* if it's an absolute path or not a URI, it's possibly an executable,
+     * so try it before displaying it */
+	gchar *scheme = g_uri_parse_scheme (disk);
+    if (g_path_is_absolute (disk) || !scheme)
+		launch_command (window, command, disk);
+
+	g_free (command);
+	g_free (disk);
+}
+
+
+static void
+search_entry_changed_idle_destroyed (gpointer data)
+{
+	APPLAUNCHER_WINDOW (data)->priv->idle_entry_changed_id = 0;
+}
+
+static gboolean
+search_entry_changed_idle (gpointer data)
+{
+	ApplauncherWindow *window = APPLAUNCHER_WINDOW (data);
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	const gchar *text = g_strdup (gtk_entry_get_text (GTK_ENTRY (priv->ent_search)));
+
+	g_free (priv->filter_text);
+	priv->filter_text = (text == NULL) ? g_strdup ("") : g_strdup (text);
+
+	search (window);
+
+	return FALSE;
+}
+
+static void
+on_search_entry_changed_cb (ApplauncherWindow *window)
+{
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	if (priv->idle_entry_changed_id != 0) {
+		g_source_remove (priv->idle_entry_changed_id);
+		priv->idle_entry_changed_id == 0;
+	}
+
+	priv->idle_entry_changed_id =
+		gdk_threads_add_idle_full (G_PRIORITY_DEFAULT,
+                                   search_entry_changed_idle,
+                                   window,
+                                   search_entry_changed_idle_destroyed);
+}
+
+static void
+on_search_entry_activate_cb (GtkEditable *entry,
+                             gpointer     data)
+{
+	ApplauncherWindow *window = APPLAUNCHER_WINDOW (data);
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	guint size = g_slist_length (priv->filtered_apps);
+	if (size == 0) return;
+
+	GtkWidget *focus = gtk_container_get_focus_child (GTK_CONTAINER (priv->grid));
+
+	if (focus) {
+		gtk_button_clicked (GTK_BUTTON (focus));
+		return;
+	}
+
+	ApplauncherAppItem *item = g_list_nth_data (priv->grid_children, 0);
+
+	gtk_widget_grab_focus (GTK_WIDGET (item));
+	if (size == 1) {
+		gtk_button_clicked (GTK_BUTTON (item));
+	}
+}
+
+static void
+on_search_entry_icon_release_cb (GtkEntry             *entry,
+                                 GtkEntryIconPosition  icon_pos,
+                                 GdkEvent             *event,
+                                 gpointer              user_data)
+{
+	if (icon_pos == GTK_ENTRY_ICON_SECONDARY) {
+		gtk_entry_set_text (GTK_ENTRY (entry), "");
+	}
+}
+
+static void
+populate_grid (ApplauncherWindow *window)
+{
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	int r, c;
+	for (r = 0; r < priv->grid_x; r++) {
+		for (c = 0; c < priv->grid_y; c++) {
+			ApplauncherAppItem *item = applauncher_appitem_new (priv->icon_size);
+			gtk_widget_set_size_request (GTK_WIDGET (item), priv->item_width, priv->item_height);
+			gtk_grid_attach (GTK_GRID (priv->grid), GTK_WIDGET (item), c, r, 1, 1);
+			gtk_widget_show (GTK_WIDGET (item));
+
+			priv->grid_children = g_list_append (priv->grid_children, item);
+
+			g_signal_connect (G_OBJECT (item), "clicked", G_CALLBACK (on_appitem_button_clicked_cb), window);
+		}
+	}
+}
+
+static void
+applauncher_window_page_left (ApplauncherWindow *window)
+{
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	gint active = applauncher_indicator_get_active (priv->pages);
+
+	if (active >= 1) {
+		applauncher_indicator_set_active (priv->pages, active - 1);
+	}
+}
+
+static void
+applauncher_window_page_right (ApplauncherWindow *window)
+{
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	gint total_pages = get_total_pages (window, priv->filtered_apps);
+	gint active = applauncher_indicator_get_active (priv->pages);
+
+	if ((active + 1) < total_pages) {
+		applauncher_indicator_set_active (priv->pages, active + 1);
+	}
+}
+
+static gint
+applauncher_window_scroll (GtkWidget      *widget,
+                           GdkEventScroll *event)
+{
+	ApplauncherWindow *window = APPLAUNCHER_WINDOW (widget);
+
+	if (event->direction == GDK_SCROLL_UP) {
+		applauncher_window_page_left (window);
+	} else if (event->direction == GDK_SCROLL_DOWN) {
+		applauncher_window_page_right (window);
+	} else {
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static gboolean
+applauncher_window_key_press_event (GtkWidget   *widget,
+                                    GdkEventKey *event)
+{
+	ApplauncherWindow *window = APPLAUNCHER_WINDOW (widget);
+	ApplauncherWindowPrivate *priv = window->priv;
+
+	switch (event->keyval)
+	{
+		case GDK_KEY_Escape:
+			gtk_widget_destroy (widget);
+		break;
+
+		case GDK_KEY_Left:
+		{
+			GtkWidget *focus = gtk_container_get_focus_child (GTK_CONTAINER (priv->grid));
+			if (focus) {
+				gint index = g_list_index (priv->grid_children, focus);
+				if ((index %  priv->grid_y) == 0) {
+					applauncher_window_page_left (window);
+				}
+			}
+			break;
+		}
+
+		case GDK_KEY_Right:
+		{
+			GtkWidget *focus = gtk_container_get_focus_child (GTK_CONTAINER (priv->grid));
+			if (focus) {
+				gint index = g_list_index (priv->grid_children, focus);
+				if ((index %  priv->grid_y) == (priv->grid_y - 1)) {
+					applauncher_window_page_right (window);
+				}
+			}
+			break;
+		}
+
+		default:
+		break;
+	}
+
+	return GTK_WIDGET_CLASS (applauncher_window_parent_class)->key_press_event (widget, event);
+}
+
+static gboolean
+applauncher_window_draw (GtkWidget *widget, cairo_t *cr)
+{
+	cairo_t *ctx;
+	cairo_pattern_t *pattern;
+	GtkAllocation alloc;
+
+	gtk_widget_get_allocation (widget, &alloc);
+
+	ctx = gdk_cairo_create (gtk_widget_get_window (widget));
+
+#if 0
+	pattern = cairo_pattern_create_linear (alloc.x, alloc.y, alloc.x, alloc.y + alloc.height);
+
+	cairo_pattern_add_color_stop_rgba (pattern, 0.0, 0.0, 0.0, 0.0, 0.1);
+	cairo_pattern_add_color_stop_rgba (pattern, 0.50, 0.0, 0.0, 0.0, 0.85);
+	cairo_pattern_add_color_stop_rgba (pattern, 0.99, 0.0, 0.0, 0.0, 0.50);
+	cairo_set_source (ctx, pattern);
+	cairo_pattern_destroy (pattern);
+
+	cairo_paint (ctx);
+#endif
+
+	cairo_set_source_rgba (ctx, 0.0, 0.0, 0.0, 0.8);
+	cairo_paint (ctx);
+
+	cairo_destroy (ctx);
+
+	return GTK_WIDGET_CLASS (applauncher_window_parent_class)->draw (widget, cr);
+}
 
 static void
 applauncher_window_init (ApplauncherWindow *window)
 {
-  GtkWidget          *vbox;
-  GtkWidget          *entry;
-  GtkWidget          *scroll;
-  GtkWidget          *image;
-  GtkWidget          *hbox;
-  GtkEntryCompletion *completion;
+	ApplauncherWindowPrivate *priv;
 
-  window->model = xfce_appfinder_model_get ();
-  window->filter_category = g_object_new (GARCON_TYPE_MENU_DIRECTORY,
-                                          "name", _("All Applications"),
-                                          "icon-name", "applications-other", NULL);
+	priv = window->priv = applauncher_window_get_instance_private (window);
 
-  gtk_window_set_type_hint (GTK_WINDOW (window), GDK_WINDOW_TYPE_HINT_UTILITY);
-  gtk_window_set_decorated (GTK_WINDOW (window), FALSE);
-  gtk_window_set_resizable (GTK_WINDOW (window), FALSE);
-  gtk_window_set_skip_taskbar_hint (GTK_WINDOW (window), TRUE);
-  gtk_window_set_skip_pager_hint(GTK_WINDOW (window), TRUE);
-  gtk_window_set_keep_above (GTK_WINDOW (window), TRUE);
-  gtk_window_stick (GTK_WINDOW (window));
+	gtk_widget_init_template (GTK_WIDGET (window));
 
-  vbox = gtk_vbox_new (FALSE, 0);
-  gtk_container_add (GTK_CONTAINER (window), vbox);
-  gtk_container_set_border_width (GTK_CONTAINER (vbox), 0);
-  gtk_widget_show (vbox);
+	priv->apps = NULL;
+	priv->filtered_apps = NULL;
+	priv->grid_children = NULL;
 
-  hbox = gtk_hbox_new (FALSE, 0);
-  gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, TRUE, 10);
-  gtk_widget_show (hbox);
+	priv->filter_text = NULL;
+	priv->idle_entry_changed_id = 0;
 
-  image = gtk_image_new_from_icon_name (XFCE_APPFINDER_STOCK_FIND, GTK_ICON_SIZE_BUTTON);
-  gtk_widget_set_size_request (image, 16, 16);
-  gtk_box_pack_start (GTK_BOX (hbox), image, FALSE, FALSE, 10);
-  gtk_widget_show (image);
+	gtk_window_set_skip_taskbar_hint (GTK_WINDOW (window), TRUE);
+	gtk_window_set_decorated (GTK_WINDOW (window), FALSE);
+	gtk_widget_set_app_paintable (GTK_WIDGET (window), TRUE);
+	gtk_window_set_type_hint (GTK_WINDOW (window), GDK_WINDOW_TYPE_HINT_NORMAL);
 
-  window->entry = entry = gtk_entry_new ();
-  gtk_box_pack_start (GTK_BOX (hbox), entry, TRUE, TRUE, 10);
-  gtk_widget_show (entry);
+	GdkScreen *screen = gtk_window_get_screen (GTK_WINDOW (window));
+	gtk_widget_set_visual (GTK_WIDGET (window), gdk_screen_get_rgba_visual (screen));
+	GdkDisplay *display = gdk_screen_get_display (screen);
+	GdkMonitor *primary = gdk_display_get_primary_monitor (display);
 
-  g_signal_connect_swapped (G_OBJECT (entry), "changed",
-      G_CALLBACK (applauncher_window_entry_changed), window);
-  g_signal_connect (G_OBJECT (entry), "activate",
-      G_CALLBACK (applauncher_window_entry_activate), window);
+	GdkRectangle area;
+	gdk_monitor_get_geometry (primary, &area);
 
-  window->completion = completion = gtk_entry_completion_new ();
-  gtk_entry_completion_set_model (completion, GTK_TREE_MODEL (window->model));
-  gtk_entry_completion_set_match_func (completion, applauncher_window_completion_match_func, window, NULL);
-  gtk_entry_completion_set_text_column (completion, XFCE_APPFINDER_MODEL_COLUMN_COMMAND);
-  gtk_entry_completion_set_popup_completion (completion, TRUE);
-  gtk_entry_completion_set_popup_single_match (completion, TRUE);
-  gtk_entry_completion_set_inline_completion (completion, TRUE);
+	// Set icon size
+	double suggested_size = pow (area.width * area.height, (double)(1.0/3.0)) / 1.6;
 
-  window->viewscroll = scroll = gtk_scrolled_window_new (NULL, NULL);
-  gtk_box_pack_start (GTK_BOX (vbox), scroll, TRUE, TRUE, 10);
-  gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (scroll), GTK_SHADOW_NONE);
-  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-  gtk_widget_show (scroll);
+	if (suggested_size < 27) {
+		priv->icon_size = 24;
+	} else if (suggested_size >= 27 && suggested_size < 40) {
+		priv->icon_size = 32;
+	} else if (suggested_size >= 40 && suggested_size < 56) {
+		priv->icon_size = 48;
+	} else if (suggested_size >= 56) {
+		priv->icon_size = 64;
+	}
 
-  /* set the icon or tree view */
-  applauncher_window_view (window);
+	priv->apps = get_all_applications ();
 
-  /* update completion (remove completed text of restart completion) */
-  completion = gtk_entry_get_completion (GTK_ENTRY (window->entry));
-  if (completion != NULL)
-    gtk_editable_delete_selection (GTK_EDITABLE (window->entry));
+	GSList *l = NULL;
+	for (l = priv->apps; l; l = l->next) {
+		if (!has_application (priv->filtered_apps, l->data))
+			priv->filtered_apps = g_slist_append (priv->filtered_apps, l->data);
+	}
 
-  gtk_entry_set_completion (GTK_ENTRY (window->entry), NULL);
+	if ((area.width / area.height) < 1.4) { // Monitor 5:4, 4:3
+		priv->grid_x = 4;
+		priv->grid_y = 4;
+	} else { // Monitor 16:9
+		priv->grid_x = 3;
+		priv->grid_y = 6;
+	}
 
-  /* update state */
-  applauncher_window_entry_changed (window);
+	priv->item_width = area.width / (priv->grid_y *2);
+	priv->item_height = area.height / (priv->grid_x *2);
+
+	int r, c;
+	for (r = 0; r < priv->grid_x; r++)
+		gtk_grid_insert_row (GTK_GRID (priv->grid), r);
+	for (c = 0; c < priv->grid_y; c++)
+		gtk_grid_insert_column (GTK_GRID (priv->grid), c);
+
+	populate_grid (window);
+
+	int total_pages = get_total_pages (window, priv->apps);
+	if (total_pages > 1) {
+		priv->pages = applauncher_indicator_new ();
+		gtk_box_set_spacing (GTK_BOX (priv->pages), 36);
+		gtk_box_pack_start (GTK_BOX (priv->box_bottom), GTK_WIDGET (priv->pages), FALSE, FALSE, 0);
+		gtk_widget_show (GTK_WIDGET (priv->pages));
+
+		g_signal_connect (G_OBJECT (priv->pages), "child-activate", G_CALLBACK (pages_activate_cb), window);
+
+		int p;
+		for (p = 1; p <= total_pages; p++) {
+			char *string = g_strdup_printf ("%d", p);
+			applauncher_indicator_append (priv->pages, string);
+			g_free (string);
+		}
+
+		applauncher_indicator_set_active (priv->pages, 0);
+	} else {
+		update_grid (window);
+	}
+
+	g_signal_connect_swapped (G_OBJECT (priv->ent_search), "changed",
+               G_CALLBACK (on_search_entry_changed_cb), window);
+
+	g_signal_connect (G_OBJECT (priv->ent_search), "icon-release",
+                      G_CALLBACK (on_search_entry_icon_release_cb), window);
+
+	g_signal_connect (G_OBJECT (priv->ent_search), "activate",
+                      G_CALLBACK (on_search_entry_activate_cb), window);
+
+	gtk_widget_add_events (GTK_WIDGET (window), GDK_SCROLL_MASK);
 }
 
 static void
 applauncher_window_finalize (GObject *object)
 {
-  ApplauncherWindow *window = APPLAUNCHER_WINDOW (object);
+	ApplauncherWindow *window = APPLAUNCHER_WINDOW (object);
+	ApplauncherWindowPrivate *priv = window->priv;
 
-  if (window->idle_entry_changed_id != 0)
-    g_source_remove (window->idle_entry_changed_id);
+	g_slist_free_full (priv->apps, (GDestroyNotify)gmenu_tree_item_unref);
+	g_slist_free (priv->filtered_apps);
 
-  g_object_unref (G_OBJECT (window->model));
-  g_object_unref (G_OBJECT (window->filter_model));
-  g_object_unref (G_OBJECT (window->sort_model));
-  g_object_unref (G_OBJECT (window->completion));
+	if (priv->idle_entry_changed_id != 0) {
+		g_source_remove (priv->idle_entry_changed_id);
+		priv->idle_entry_changed_id = 0;
+	}
 
-  if (window->filter_category != NULL)
-    g_object_unref (G_OBJECT (window->filter_category));
-
-  g_free (window->filter_text);
-
-  (*G_OBJECT_CLASS (applauncher_window_parent_class)->finalize) (object);
+	(*G_OBJECT_CLASS (applauncher_window_parent_class)->finalize) (object);
 }
 
 static void
-applauncher_window_set_item_width (ApplauncherWindow *window)
+applauncher_window_class_init (ApplauncherWindowClass *klass)
 {
-  gint                   width = 0;
-  XfceAppfinderIconSize  icon_size;
+	GObjectClass   *object_class = G_OBJECT_CLASS (klass);
+	GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
 
-  appfinder_return_if_fail (GTK_IS_ICON_VIEW (window->view));
+	object_class->finalize = applauncher_window_finalize;
 
-  g_object_get (G_OBJECT (window->model), "icon-size", &icon_size, NULL);
+	widget_class->scroll_event = applauncher_window_scroll;
+	widget_class->draw = applauncher_window_draw;
+	widget_class->key_press_event = applauncher_window_key_press_event;
 
-  /* some hard-coded values for the cell size that seem to work fine */
-  switch (icon_size)
-    {
-    case XFCE_APPFINDER_ICON_SIZE_SMALLEST:
-      width = 16 * 3.75;
-      break;
+	gtk_widget_class_set_template_from_resource (GTK_WIDGET_CLASS (klass),
+                                     "/kr/gooroom/applauncher/window.ui");
 
-    case XFCE_APPFINDER_ICON_SIZE_SMALLER:
-      width = 24 * 3;
-      break;
-
-    case XFCE_APPFINDER_ICON_SIZE_SMALL:
-      width = 36 * 2.5;
-      break;
-
-    case XFCE_APPFINDER_ICON_SIZE_NORMAL:
-      width = 48 * 2;
-      break;
-
-    case XFCE_APPFINDER_ICON_SIZE_LARGE:
-      width = 64 * 1.5;
-      break;
-
-    case XFCE_APPFINDER_ICON_SIZE_LARGER:
-      width = 96 * 1.75;
-      break;
-
-    case XFCE_APPFINDER_ICON_SIZE_LARGEST:
-      width = 128 * 1.25;
-      break;
-    }
-
-  gtk_icon_view_set_item_orientation (GTK_ICON_VIEW (window->view), GTK_ORIENTATION_VERTICAL);
-  gtk_icon_view_set_item_width (GTK_ICON_VIEW (window->view), width);
-}
-
-static void
-applauncher_window_view (ApplauncherWindow *window)
-{
-  GtkTreeViewColumn *column;
-  GtkCellRenderer   *renderer;
-  GtkTreeSelection  *selection;
-  GtkWidget         *view;
-  gboolean           icon_view;
-
-  window->filter_model = gtk_tree_model_filter_new (GTK_TREE_MODEL (window->model), NULL);
-  gtk_tree_model_filter_set_visible_func (GTK_TREE_MODEL_FILTER (window->filter_model), applauncher_window_item_visible, window, NULL);
-
-  window->sort_model = gtk_tree_model_sort_new_with_model (GTK_TREE_MODEL (window->filter_model));
-  gtk_tree_sortable_set_default_sort_func (GTK_TREE_SORTABLE (window->sort_model), applauncher_window_sort_items, window->entry, NULL);
-
-  /* Disable sort model for icon view, since it does not work as expected */
-  /* Example: the user searches for some app and then deletes the text entry. */
-  /* Repeat this operation a couple of times, you will notice that sorting is incorrect. */
-  window->view = view = gtk_icon_view_new_with_model (window->filter_model/*sort_model*/);
-  gtk_icon_view_set_selection_mode (GTK_ICON_VIEW (view), GTK_SELECTION_BROWSE);
-  gtk_icon_view_set_pixbuf_column (GTK_ICON_VIEW (view), XFCE_APPFINDER_MODEL_COLUMN_ICON);
-  gtk_icon_view_set_text_column (GTK_ICON_VIEW (view), XFCE_APPFINDER_MODEL_COLUMN_TITLE);
-//  gtk_icon_view_set_tooltip_column (GTK_ICON_VIEW (view), XFCE_APPFINDER_MODEL_COLUMN_TOOLTIP);
-  applauncher_window_set_item_width (window);
-
-  g_signal_connect_swapped (G_OBJECT (view), "item-activated",
-      G_CALLBACK (applauncher_window_row_activated), window);
-
-  gtk_container_add (GTK_CONTAINER (window->viewscroll), view);
-  gtk_widget_show (view);
-}
-
-static gboolean
-applauncher_window_view_get_selected (ApplauncherWindow  *window,
-                                      GtkTreeModel        **model,
-                                      GtkTreeIter          *iter)
-{
-  GtkTreeSelection *selection;
-  gboolean          have_iter;
-  GList            *items;
-
-  appfinder_return_val_if_fail (IS_APPLAUNCHER_WINDOW (window), FALSE);
-  appfinder_return_val_if_fail (model != NULL, FALSE);
-  appfinder_return_val_if_fail (iter != NULL, FALSE);
-
-  items = gtk_icon_view_get_selected_items (GTK_ICON_VIEW (window->view));
-  appfinder_assert (g_list_length (items) <= 1);
-  if (items != NULL)
-    {
-      *model = gtk_icon_view_get_model (GTK_ICON_VIEW (window->view));
-      have_iter = gtk_tree_model_get_iter (*model, iter, items->data);
-
-      gtk_tree_path_free (items->data);
-      g_list_free (items);
-    }
-  else
-    {
-      have_iter = FALSE;
-    }
-
-  return have_iter;
-}
-
-static gboolean
-applauncher_window_completion_match_func (GtkEntryCompletion *completion,
-                                             const gchar        *key,
-                                             GtkTreeIter        *iter,
-                                             gpointer            data)
-{
-  const gchar *text;
-
-  ApplauncherWindow *window = APPLAUNCHER_WINDOW (data);
-
-  appfinder_return_val_if_fail (GTK_IS_ENTRY_COMPLETION (completion), FALSE);
-  appfinder_return_val_if_fail (IS_APPLAUNCHER_WINDOW (data), FALSE);
-  appfinder_return_val_if_fail (GTK_TREE_MODEL (window->model)
-      == gtk_entry_completion_get_model (completion), FALSE);
-
-  /* don't use the casefolded key generated by gtk */
-  text = gtk_entry_get_text (GTK_ENTRY (window->entry));
-
-  return xfce_appfinder_model_get_visible_command (window->model, iter, text);
-}
-
-static gboolean
-applauncher_window_entry_changed_idle (gpointer data)
-{
-  ApplauncherWindow *window = APPLAUNCHER_WINDOW (data);
-  const gchar         *text;
-  gchar               *normalized;
-
-  text = gtk_entry_get_text (GTK_ENTRY (window->entry));
-
-  g_free (window->filter_text);
-
-  if (IS_STRING (text))
-    {
-      normalized = g_utf8_normalize (text, -1, G_NORMALIZE_ALL);
-      window->filter_text = g_utf8_casefold (normalized, -1);
-      g_free (normalized);
-    }
-  else
-    {
-      window->filter_text = NULL;
-    }
-
-  gtk_tree_model_filter_refilter (GTK_TREE_MODEL_FILTER (window->filter_model));
-
-  return FALSE;
-}
-
-static void
-applauncher_window_entry_changed_idle_destroyed (gpointer data)
-{
-  APPLAUNCHER_WINDOW (data)->idle_entry_changed_id = 0;
-}
-
-static void
-applauncher_window_entry_changed (ApplauncherWindow *window)
-{
-  if (window->idle_entry_changed_id != 0)
-    g_source_remove (window->idle_entry_changed_id);
-
-  window->idle_entry_changed_id =
-      gdk_threads_add_idle_full (G_PRIORITY_DEFAULT, applauncher_window_entry_changed_idle,
-                       window, applauncher_window_entry_changed_idle_destroyed);
-}
-
-static void
-applauncher_window_entry_activate (GtkEditable         *entry,
-                                   ApplauncherWindow *window)
-{
-  GtkTreePath *path;
-  gboolean     cursor_set = FALSE;
-
-  if (gtk_icon_view_get_visible_range (GTK_ICON_VIEW (window->view), &path, NULL))
-    {
-      gtk_icon_view_select_path (GTK_ICON_VIEW (window->view), path);
-      gtk_icon_view_set_cursor (GTK_ICON_VIEW (window->view), path, NULL, FALSE);
-      gtk_tree_path_free (path);
-
-      cursor_set = TRUE;
-    }
-
-  if (cursor_set)
-    gtk_widget_grab_focus (window->view);
-  else
-    applauncher_window_execute (window);
-}
-
-static gboolean
-applauncher_window_item_visible (GtkTreeModel *model,
-                                    GtkTreeIter  *iter,
-                                    gpointer      data)
-{
-  ApplauncherWindow *window = APPLAUNCHER_WINDOW (data);
-  /* don't use the casefolded key generated by gtk */
-//  const gchar *filter_string= gtk_entry_get_text (GTK_ENTRY (window->entry));
-
-  return xfce_appfinder_model_get_visible (XFCE_APPFINDER_MODEL (model), iter,
-//                                           window->filter_category,
-                                           NULL,
-                                           window->filter_text);
-}
-
-static void
-applauncher_window_row_activated (ApplauncherWindow *window)
-{
-  applauncher_window_execute (window);
-}
-
-static void
-applauncher_window_execute (ApplauncherWindow *window)
-{
-  GtkTreeModel *model, *child_model;
-  GtkTreeIter   iter, child_iter;
-  GError       *error = NULL;
-  gboolean      result = FALSE;
-  GdkScreen    *screen;
-  gboolean      regular_command = FALSE;
-
-  screen = gtk_window_get_screen (GTK_WINDOW (window));
-
-  if (applauncher_window_view_get_selected (window, &model, &iter))
-    {
-      child_model = model;
-
-      if (GTK_IS_TREE_MODEL_SORT (model))
-        {
-          gtk_tree_model_sort_convert_iter_to_child_iter (GTK_TREE_MODEL_SORT (model), &child_iter, &iter);
-          iter = child_iter;
-          child_model = gtk_tree_model_sort_get_model (GTK_TREE_MODEL_SORT (model));
-        }
-
-      gtk_tree_model_filter_convert_iter_to_child_iter (GTK_TREE_MODEL_FILTER (child_model), &child_iter, &iter);
-      result = xfce_appfinder_model_execute (window->model, &child_iter, screen, &regular_command, &error);
-
-      if (!result && regular_command)
-        {
-          gchar *primary = g_markup_printf_escaped (_("Failed to execute program"));
-
-          xfce_message_dialog (NULL,
-                              _("Launch Error"), GTK_STOCK_DIALOG_ERROR,
-                              primary, (error != NULL) ? error->message : "",
-                              GTK_STOCK_CLOSE, GTK_RESPONSE_ACCEPT,
-                              NULL);
-
-          g_free (primary);
-        }
-    }
-
-  if (error != NULL)
-      g_error_free (error);
-}
-
-static gint
-applauncher_window_sort_items (GtkTreeModel *model,
-                                  GtkTreeIter  *a,
-                                  GtkTreeIter  *b,
-                                  gpointer      data)
-{
-  gchar        *normalized, *casefold, *title_a, *title_b, *found;
-  GtkWidget    *entry = GTK_WIDGET (data);
-  gint          result = -1;
-
-  appfinder_return_val_if_fail (GTK_IS_ENTRY (entry), 0);
-
-  normalized = g_utf8_normalize (gtk_entry_get_text (GTK_ENTRY (entry)), -1, G_NORMALIZE_ALL);
-  casefold = g_utf8_casefold (normalized, -1);
-  g_free (normalized);
-
-  gtk_tree_model_get (model, a, XFCE_APPFINDER_MODEL_COLUMN_TITLE, &title_a, -1);
-  normalized = g_utf8_normalize (title_a, -1, G_NORMALIZE_ALL);
-  title_a = g_utf8_casefold (normalized, -1);
-  g_free (normalized);
-
-  gtk_tree_model_get (model, b, XFCE_APPFINDER_MODEL_COLUMN_TITLE, &title_b, -1);
-  normalized = g_utf8_normalize (title_b, -1, G_NORMALIZE_ALL);
-  title_b = g_utf8_casefold (normalized, -1);
-  g_free (normalized);
-
-  if (strcmp (casefold, "") == 0)
-    result = g_strcmp0 (title_a, title_b);
-  else
-    {
-      found = g_strrstr (title_a, casefold);
-      if (found)
-        result -= (G_MAXINT - (found - title_a));
-
-      found = g_strrstr (title_b, casefold);
-      if (found)
-        result += (G_MAXINT - (found - title_b));
-    }
-
-  g_free (casefold);
-  g_free (title_a);
-  g_free (title_b);
-  return result;
+	gtk_widget_class_bind_template_child_private (GTK_WIDGET_CLASS (klass), ApplauncherWindow, ent_search);
+	gtk_widget_class_bind_template_child_private (GTK_WIDGET_CLASS (klass), ApplauncherWindow, grid);
+	gtk_widget_class_bind_template_child_private (GTK_WIDGET_CLASS (klass), ApplauncherWindow, box_bottom);
 }
 
 ApplauncherWindow *
 applauncher_window_new (void)
 {
-  return g_object_new (APPLAUNCHER_TYPE_WINDOW,
-                       "type", GTK_WINDOW_TOPLEVEL,
-                       NULL);
+  return g_object_new (APPLAUNCHER_TYPE_WINDOW, NULL);
 }

@@ -1,5 +1,9 @@
 panel-plugin/applauncher-plugin.desktop.in.in
 panel-plugin/applauncher-plugin.c
-panel-plugin/appfinder-model.c
+panel-plugin/applauncher-indicator.c
+panel-plugin/applauncher-appitem.c
 panel-plugin/applauncher-window.c
-
+panel-plugin/xfce-spawn.c
+[type: gettext/glade]panel-plugin/window.ui
+[type: gettext/glade]panel-plugin/appitem.ui
+[type: gettext/glade]panel-plugin/indicator.ui

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/kr/gooroom/applauncher">
+    <file preprocess="xml-stripblanks">window.ui</file>
+    <file preprocess="xml-stripblanks">indicator.ui</file>
+    <file preprocess="xml-stripblanks">appitem.ui</file>
+  </gresource>
+</gresources>

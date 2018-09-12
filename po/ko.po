@@ -29,3 +29,13 @@ msgstr "실행 에러"
 
 msgid "Application has no command"
 msgstr "프로그램에 명령이 없습니다"
+
+msgid "Type to search…"
+msgstr "검색하려면 입력하십시오…"
+
+msgid "Application Launching Error"
+msgstr "어플리케이션 실행 에러"
+
+#, c-format
+msgid "Could not run command '%s'"
+msgstr "'%s' 명령을 실행할 수 없습니다"

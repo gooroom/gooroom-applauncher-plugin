@@ -30,3 +30,13 @@ msgstr "Launch Error"
 
 msgid "Application has no command"
 msgstr "Application has no command"
+
+msgid "Type to search…"
+msgstr "Type to search…"
+
+msgid "Application Launching Error"
+msgstr "Application Launching Error"
+
+#, c-format
+msgid "Could not run command '%s'"
+msgstr "Could not run command '%s'"

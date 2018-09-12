@@ -28,14 +28,16 @@
 #include "applauncher-window.h"
 #include "applauncher-plugin.h"
 
+#include <glib.h>
+#include <glib/gi18n.h>
+
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 
 #include <glib-object.h>
-#include <libxfce4util/libxfce4util.h>
+
 #include <libxfce4panel/xfce-panel-plugin.h>
 
-#include <xfconf/xfconf.h>
 
 
 #define PANEL_TRAY_ICON_SIZE        (32)
@@ -52,6 +54,7 @@ struct _ApplauncherPlugin
 {
 	XfcePanelPlugin      __parent__;
 
+	int                panel_size;
 	GtkWidget         *button;
 
 	ApplauncherWindow *popup_window;
@@ -70,7 +73,7 @@ on_popup_window_closed (gpointer data)
 	if (plugin->popup_window != NULL) {
 		gtk_widget_destroy (GTK_WIDGET (plugin->popup_window));
 		plugin->popup_window = NULL;
-    }
+	}
 
 	xfce_panel_plugin_block_autohide (XFCE_PANEL_PLUGIN (plugin), FALSE);
 	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (plugin->button), FALSE);
@@ -78,41 +81,30 @@ on_popup_window_closed (gpointer data)
 	return TRUE;
 }
 
-static gboolean
-on_popup_key_press_event (GtkWidget *widget, GdkEventKey *event, gpointer data)
-{
-	if (event->type == GDK_KEY_PRESS && event->keyval == GDK_Escape) {
-		on_popup_window_closed (data);
-		return TRUE;
-	}
-
-	return FALSE;
-}
-
-static void
-on_popup_window_realized (GtkWidget *widget, gpointer data)
-{
-	gint x, y;
-	ApplauncherPlugin *plugin = APPLAUNCHER_PLUGIN (data);
-
-	xfce_panel_plugin_position_widget (XFCE_PANEL_PLUGIN (plugin), widget, plugin->button, &x, &y);
-	gtk_window_move (GTK_WINDOW (widget), x, y);
-}
-
 static ApplauncherWindow *
 popup_window_new (ApplauncherPlugin *plugin, GdkEventButton *event)
 {
+	GdkScreen *screen;
+	GdkDisplay *display;
+	GdkMonitor *primary;
 	ApplauncherWindow *window;
 
 	window = applauncher_window_new ();
+
+	screen = gtk_widget_get_screen (GTK_WIDGET (plugin));
 	gtk_window_set_screen (GTK_WINDOW (window), gtk_widget_get_screen (GTK_WIDGET (plugin)));
 
-	g_signal_connect (G_OBJECT (window), "realize", G_CALLBACK (on_popup_window_realized), plugin);
-	g_signal_connect_swapped (G_OBJECT (window), "delete-event", G_CALLBACK (on_popup_window_closed), plugin);
-	g_signal_connect (G_OBJECT (window), "key-press-event", G_CALLBACK (on_popup_key_press_event), plugin);
+	display = gdk_screen_get_display (screen);
+	primary = gdk_display_get_primary_monitor (display);
+
+	GdkRectangle area;
+	gdk_monitor_get_geometry (primary, &area);
+
+	g_signal_connect_swapped (G_OBJECT (window), "destroy", G_CALLBACK (on_popup_window_closed), plugin);
 	g_signal_connect_swapped (G_OBJECT (window), "focus-out-event", G_CALLBACK (on_popup_window_closed), plugin);
 
-	gtk_widget_set_size_request (GTK_WIDGET (window), 435, 480);
+	gtk_widget_set_size_request (GTK_WIDGET (window),
+                                 area.width, area.height - plugin->panel_size);
 	gtk_widget_show_all (GTK_WIDGET (window));
 
 	xfce_panel_plugin_block_autohide (XFCE_PANEL_PLUGIN (plugin), TRUE);
@@ -162,6 +154,8 @@ applauncher_plugin_size_changed (XfcePanelPlugin *panel_plugin, gint size)
 		gtk_widget_set_size_request (GTK_WIDGET (panel_plugin), size, -1);
 	}
 
+	plugin->panel_size = size;
+
 	return TRUE;
 }
 
@@ -174,10 +168,27 @@ applauncher_plugin_mode_changed (XfcePanelPlugin *plugin, XfcePanelPluginMode mo
 static void
 applauncher_plugin_init (ApplauncherPlugin *plugin)
 {
-//	plugin->button         = NULL;
-//	plugin->popup_window   = NULL;
+	gchar *css_path = NULL;
+	GtkCssProvider *provider = NULL;
 
-	xfce_textdomain (GETTEXT_PACKAGE, PACKAGE_LOCALE_DIR, "UTF-8");
+    /* Initialize i18n */
+	setlocale (LC_ALL, "");
+	bindtextdomain (GETTEXT_PACKAGE, PACKAGE_LOCALE_DIR);
+	bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
+	textdomain (GETTEXT_PACKAGE);
+
+	provider = gtk_css_provider_new ();
+	css_path = g_build_filename (PKGDATA_DIR, "theme", "gooroom-applauncher.css", NULL);
+	gtk_css_provider_load_from_path (provider, css_path, NULL);
+	g_free (css_path);
+
+	gtk_style_context_add_provider_for_screen (gdk_screen_get_default (),
+                                GTK_STYLE_PROVIDER (provider),
+                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+
+	g_object_unref (provider);
+
+	plugin->panel_size = 40;
 
 	plugin->button = xfce_panel_create_toggle_button ();
 	xfce_panel_plugin_add_action_widget (XFCE_PANEL_PLUGIN (plugin), plugin->button);
@@ -207,7 +218,7 @@ applauncher_plugin_class_init (ApplauncherPluginClass *klass)
 	XfcePanelPluginClass *plugin_class;
 
 	plugin_class = XFCE_PANEL_PLUGIN_CLASS (klass);
-//	plugin_class->free_data = applauncher_plugin_free_data;
+	plugin_class->free_data = applauncher_plugin_free_data;
 	plugin_class->size_changed = applauncher_plugin_size_changed;
 	plugin_class->mode_changed = applauncher_plugin_mode_changed;
 }
