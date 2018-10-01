@@ -874,11 +874,12 @@ applauncher_window_init (ApplauncherWindow *window)
 
 	populate_grid (window);
 
+	priv->pages = applauncher_indicator_new ();
+	gtk_box_set_spacing (GTK_BOX (priv->pages), 36);
+	gtk_box_pack_start (GTK_BOX (priv->box_bottom), GTK_WIDGET (priv->pages), FALSE, FALSE, 0);
+
 	int total_pages = get_total_pages (window, priv->apps);
 	if (total_pages > 1) {
-		priv->pages = applauncher_indicator_new ();
-		gtk_box_set_spacing (GTK_BOX (priv->pages), 36);
-		gtk_box_pack_start (GTK_BOX (priv->box_bottom), GTK_WIDGET (priv->pages), FALSE, FALSE, 0);
 		gtk_widget_show (GTK_WIDGET (priv->pages));
 
 		g_signal_connect (G_OBJECT (priv->pages), "child-activate", G_CALLBACK (pages_activate_cb), window);
@@ -892,6 +893,7 @@ applauncher_window_init (ApplauncherWindow *window)
 
 		applauncher_indicator_set_active (priv->pages, 0);
 	} else {
+		gtk_widget_hide (GTK_WIDGET (priv->pages));
 		update_grid (window);
 	}
 
