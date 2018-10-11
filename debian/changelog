@@ -1,3 +1,15 @@
+gooroom-applauncher-plugin (0.2.4+grm1u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [2bf5aea2] Upgrading UX/UI
+  * [9d5e6ff1] Modified theme for searching entry and item
+  * [7e5194bf] Replacing the plugin icon
+  * [cc09d123] Fixed a bug that the instance of page indicator was not created when there was only one page
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Thu, 11 Oct 2018 10:31:31 +0900
+
 gooroom-applauncher-plugin (0.1.0+grm1u) unstable; urgency=medium
 
   * Initial Release
