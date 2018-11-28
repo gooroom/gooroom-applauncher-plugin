@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="gooroom-applauncher-plugin">
+
+  <schema id="apps.gooroom-applauncher-plugin" path="/apps/gooroom-applauncher-plugin/">
+
+    <key name="blacklist" type="as">
+      <default>[]</default>
+      <summary>Application Blacklist</summary>
+      <description>A list of desktop id or name not to be displayed.</description>
+    </key>
+
+  </schema>
+</schemalist>

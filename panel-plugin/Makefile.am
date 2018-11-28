@@ -1,3 +1,6 @@
+gsettings_SCHEMAS = apps.gooroom-applauncher-plugin.gschema.xml
+@GSETTINGS_RULES@
+
 AM_CPPFLAGS = \
 	-I$(top_srcdir) \
 	-DPACKAGE_LOCALE_DIR=\"$(localedir)\" \
@@ -57,20 +60,10 @@ applauncher-resources.c: gresource.xml $(resource_files)
 applauncher-resources.h: gresource.xml $(resource_files)
 	$(AM_V_GEN) glib-compile-resources --target=$@ --sourcedir=$(srcdir) --generate-header --c-name applauncher $<
 
-
-#
-# Desktop file
-#
-desktopdir = \
-	$(datadir)/xfce4/panel/plugins
-
-desktop_in_files = \
-	applauncher-plugin.desktop.in.in
-
+@INTLTOOL_DESKTOP_RULE@
+desktopdir = $(datadir)/xfce4/panel/plugins
+desktop_in_files = applauncher-plugin.desktop.in.in
 desktop_DATA = $(desktop_in_files:.desktop.in.in=.desktop)
 
-@INTLTOOL_DESKTOP_RULE@
-
-EXTRA_DIST = $(desktop_in_files)
-
+EXTRA_DIST = $(desktop_in_files) $(gsettings_SCHEMAS)
 DISTCLEANFILES = $(desktop_DATA)
