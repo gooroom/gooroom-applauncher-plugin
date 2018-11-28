@@ -29,6 +29,7 @@
 #endif
 
 #include <glib.h>
+#include <gio/gio.h>
 #include <glib/gi18n.h>
 
 #include <gtk/gtk.h>
@@ -46,8 +47,9 @@
 
 
 
-static GSList *get_all_applications_from_dir (GMenuTreeDirectory *directory,
-                                              GSList             *list);
+static GSList *get_all_applications_from_dir (GMenuTreeDirectory   *directory,
+                                              GSList               *list,
+                                              GSList               *blacklist);
 
 struct _ApplauncherWindowPrivate
 {
@@ -70,6 +72,7 @@ struct _ApplauncherWindowPrivate
 	int item_height;
 
 	gchar *filter_text;
+	gchar **blacklist;
 
 	guint idle_entry_changed_id;
 };
@@ -79,9 +82,135 @@ G_DEFINE_TYPE_WITH_PRIVATE (ApplauncherWindow, applauncher_window, GTK_TYPE_WIND
 
 
 
+static gboolean
+desktop_has_name (const gchar *id, const gchar *name)
+{
+	gboolean ret = FALSE;
+
+	gchar *desktop = g_build_filename ("/usr/share/applications", id, NULL);
+	GKeyFile *keyfile = g_key_file_new ();
+
+	if (g_key_file_load_from_file (keyfile,
+				desktop,
+				G_KEY_FILE_KEEP_COMMENTS |
+				G_KEY_FILE_KEEP_TRANSLATIONS,
+				NULL)) {
+		gsize num_keys, i;
+		gchar **keys = g_key_file_get_keys (keyfile, "Desktop Entry", &num_keys, NULL);
+
+		for (i = 0; i < num_keys; i++) {
+			if (!g_str_has_prefix (keys[i], "Name"))
+				continue;
+
+			gchar *value = g_key_file_get_value (keyfile, "Desktop Entry", keys[i], NULL);
+			if (value) {
+				if (strstr (value, name) != NULL) {
+					ret = TRUE;
+				}
+			}
+			g_free (value);
+		}
+		g_strfreev (keys);
+	}
+	g_key_file_free (keyfile);
+	g_free (desktop);
+
+	return ret;
+}
+
+static gchar *
+find_desktop_by_id (GList *apps, const gchar *find_str)
+{
+	GList *l = NULL;
+	gchar *ret = NULL;
+
+	if (!find_str || g_str_equal (find_str, ""))
+		return NULL;
+
+	for (l = apps; l; l = l->next) {
+		GAppInfo *appinfo = G_APP_INFO (l->data);
+		if (appinfo) {
+			const gchar *id = g_app_info_get_id (appinfo);
+
+			if (g_str_equal (id, find_str)) {
+				ret = g_strdup (id);
+				break;
+			}
+
+			if (desktop_has_name (id, find_str)) {
+				ret = g_strdup (id);
+				break;
+			}
+		}
+	}
+
+	return ret;
+}
+
+static gboolean
+has_blacklist (GMenuTreeEntry *entry, GSList *blacklist)
+{
+	g_return_val_if_fail (entry && blacklist, FALSE);
+
+	GAppInfo *appinfo;
+	gboolean ret = FALSE;
+
+	appinfo = G_APP_INFO (gmenu_tree_entry_get_app_info (entry));
+	if (appinfo) {
+		const char *id = g_app_info_get_id (appinfo);
+		if (id) {
+			GSList *l = NULL;
+			for (l = blacklist; l; l = l->next) {
+				gchar *_id = (gchar *)l->data;
+				if (g_str_equal (_id, ""))
+					continue;
+
+				if (g_str_equal (_id, id)) {
+					ret = TRUE;
+					break;
+				}
+			}
+		}
+	}
+
+	return ret;
+}
+
+static GSList *
+get_application_blacklist (void)
+{
+	guint i;
+	GSettings *settings;
+	gchar **blacklist = NULL;
+	GList *all_apps = NULL;
+	GSList *blacklist_apps = NULL, *l = NULL;
+
+	settings = g_settings_new ("apps.gooroom-applauncher-plugin");
+	blacklist = g_settings_get_strv (settings, "blacklist");
+	g_object_unref (settings);
+
+	all_apps = g_app_info_get_all ();
+
+	for (i = 0; blacklist[i]; i++) {
+		if (!g_str_equal (blacklist[i], "")) {
+			// find desktop file
+			gchar *desktop = find_desktop_by_id (all_apps, blacklist[i]);
+			if (desktop) {
+				if (!g_slist_find_custom (blacklist_apps, desktop, (GCompareFunc) g_utf8_collate)) {
+					blacklist_apps = g_slist_append (blacklist_apps, desktop);
+				}
+			}
+		}
+	}
+
+	g_strfreev (blacklist);
+
+	return blacklist_apps;
+}
+
 /* Copied from gnome-panel-3.26.0/gnome-panel/menu.c:
  * get_applications_menu () */
-gchar *
+static gchar *
 get_applications_menu (void)
 {
 	const gchar *xdg_menu_prefx = g_getenv ("XDG_MENU_PREFIX");
@@ -99,19 +228,23 @@ get_applications_menu (void)
 /* Copied from gnome-panel-3.26.0/gnome-panel/panel-run-dialog.c:
  * get_all_applications_from_alias () */
 static GSList *
-get_all_applications_from_alias (GMenuTreeAlias *alias,
-                                 GSList         *list)
+get_all_applications_from_alias (GMenuTreeAlias   *alias,
+                                 GSList           *list,
+                                 GSList           *blacklist)
 {
 	switch (gmenu_tree_alias_get_aliased_item_type (alias))
 	{
-		case GMENU_TREE_ITEM_ENTRY:
-			/* pass on the reference */
-			list = g_slist_append (list, gmenu_tree_alias_get_aliased_entry (alias));
+		case GMENU_TREE_ITEM_ENTRY: {
+			GMenuTreeEntry *entry = gmenu_tree_alias_get_aliased_entry (alias);
+			if (!has_blacklist (entry, blacklist))
+				/* pass on the reference */
+				list = g_slist_append (list, entry);
 			break;
+		}
 
 		case GMENU_TREE_ITEM_DIRECTORY: {
 			GMenuTreeDirectory *directory = gmenu_tree_alias_get_aliased_directory (alias);
-			list = get_all_applications_from_dir (directory, list);
+			list = get_all_applications_from_dir (directory, list, blacklist);
 			gmenu_tree_item_unref (directory);
 			break;
 		}
@@ -126,8 +259,9 @@ get_all_applications_from_alias (GMenuTreeAlias *alias,
 /* Copied from gnome-panel-3.26.0/gnome-panel/panel-run-dialog.c:
  * get_all_applications_from_dir () */
 static GSList *
-get_all_applications_from_dir (GMenuTreeDirectory *directory,
-                               GSList             *list)
+get_all_applications_from_dir (GMenuTreeDirectory  *directory,
+                               GSList              *list,
+                               GSList              *blacklist)
 {
 	GMenuTreeIter *iter;
 	GMenuTreeItemType next_type;
@@ -136,20 +270,23 @@ get_all_applications_from_dir (GMenuTreeDirectory *directory,
 
 	while ((next_type = gmenu_tree_iter_next (iter)) != GMENU_TREE_ITEM_INVALID) {
 		switch (next_type) {
-			case GMENU_TREE_ITEM_ENTRY:
-				list = g_slist_append (list, gmenu_tree_iter_get_entry (iter));
-			break;
+			case GMENU_TREE_ITEM_ENTRY: {
+				GMenuTreeEntry *entry = gmenu_tree_iter_get_entry (iter);
+				if (!has_blacklist (entry, blacklist))
+					list = g_slist_append (list, entry);
+				break;
+			}
 
 			case GMENU_TREE_ITEM_DIRECTORY: {
 				GMenuTreeDirectory *dir = gmenu_tree_iter_get_directory (iter);
-				list = get_all_applications_from_dir (dir, list);
+				list = get_all_applications_from_dir (dir, list, blacklist);
 				gmenu_tree_item_unref (dir);
 				break;
 			}
 
 			case GMENU_TREE_ITEM_ALIAS: {
 				GMenuTreeAlias *alias = gmenu_tree_iter_get_alias (iter);
-				list = get_all_applications_from_alias (alias, list);
+				list = get_all_applications_from_alias (alias, list, blacklist);
 				gmenu_tree_item_unref (alias);
 				break;
 			}
@@ -167,19 +304,19 @@ get_all_applications_from_dir (GMenuTreeDirectory *directory,
 static gboolean
 has_application (GSList *list, GMenuTreeEntry *entry)
 {
-	const gchar *application_name;
+	const gchar *id;
 	if (entry) {
 		GAppInfo *app_info = G_APP_INFO (gmenu_tree_entry_get_app_info (entry));
 		if (app_info) {
-			application_name = g_app_info_get_name (app_info);
+			id = g_app_info_get_id (app_info);
 		} else {
-			application_name = NULL;
+			id = NULL;
 		}
 	} else {
-		application_name = NULL;
+		id = NULL;
 	}
 
-	if (!application_name) return FALSE;
+	if (!id) return FALSE;
 
 	GSList *l = NULL;
 	for (l = list; l; l = l->next) {
@@ -187,8 +324,8 @@ has_application (GSList *list, GMenuTreeEntry *entry)
 		if (entry) {
 			GAppInfo *app_info = G_APP_INFO (gmenu_tree_entry_get_app_info (entry));
 			if (app_info) {
-				const gchar *name = g_app_info_get_name (app_info);
-				if (g_strcmp0 (name, application_name) == 0)
+				const gchar *_id = g_app_info_get_id (app_info);
+				if (g_str_equal (_id, id))
 					return TRUE;
 			}
 		}
@@ -200,7 +337,7 @@ has_application (GSList *list, GMenuTreeEntry *entry)
 /* Copied from gnome-panel-3.26.0/gnome-panel/panel-run-dialog.c:
  * get_all_applications () */
 static GSList *
-get_all_applications (void)
+get_all_applications (GSList *blacklist)
 {
 	GMenuTree          *tree;
 	GMenuTreeDirectory *root;
@@ -219,7 +356,7 @@ get_all_applications (void)
 
 	root = gmenu_tree_get_root_directory (tree);
 
-	list = get_all_applications_from_dir (root, NULL);
+	list = get_all_applications_from_dir (root, NULL, blacklist);
 
 	gmenu_tree_item_unref (root);
 	g_object_unref (tree);
@@ -847,7 +984,9 @@ applauncher_window_init (ApplauncherWindow *window)
 		priv->icon_size = 64;
 	}
 
-	priv->apps = get_all_applications ();
+	GSList *blacklist = get_application_blacklist ();
+	priv->apps = get_all_applications (blacklist);
+	g_slist_free_full (blacklist, (GDestroyNotify)g_free);
 
 	GSList *l = NULL;
 	for (l = priv->apps; l; l = l->next) {

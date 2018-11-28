@@ -60,6 +60,8 @@ XDT_CHECK_PACKAGE([LIBGNOME_MENU], libgnome-menu-3.0)
 XDT_CHECK_PACKAGE([LIBXFCE4PANEL], [libxfce4panel-${LIBXFCE4PANEL_VERSION_API}], [4.11.0])
 XDT_CHECK_PACKAGE([LIBSTARTUP_NOTIFICATION], [libstartup-notification-1.0], [0.12])
 
+GLIB_GSETTINGS
+
 dnl ***********************************
 dnl *** Check for debugging support ***
 dnl ***********************************
