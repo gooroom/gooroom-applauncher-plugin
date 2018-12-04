@@ -85,35 +85,44 @@ G_DEFINE_TYPE_WITH_PRIVATE (ApplauncherWindow, applauncher_window, GTK_TYPE_WIND
 static gboolean
 desktop_has_name (const gchar *id, const gchar *name)
 {
+	const char *desktop;
 	gboolean ret = FALSE;
 
-	gchar *desktop = g_build_filename ("/usr/share/applications", id, NULL);
-	GKeyFile *keyfile = g_key_file_new ();
-
-	if (g_key_file_load_from_file (keyfile,
-				desktop,
-				G_KEY_FILE_KEEP_COMMENTS |
-				G_KEY_FILE_KEEP_TRANSLATIONS,
-				NULL)) {
-		gsize num_keys, i;
-		gchar **keys = g_key_file_get_keys (keyfile, "Desktop Entry", &num_keys, NULL);
-
-		for (i = 0; i < num_keys; i++) {
-			if (!g_str_has_prefix (keys[i], "Name"))
-				continue;
-
-			gchar *value = g_key_file_get_value (keyfile, "Desktop Entry", keys[i], NULL);
-			if (value) {
-				if (strstr (value, name) != NULL) {
-					ret = TRUE;
-				}
-			}
-			g_free (value);
-		}
-		g_strfreev (keys);
+	GDesktopAppInfo *dt_info = g_desktop_app_info_new (id);
+	if (dt_info) {
+		desktop = g_desktop_app_info_get_filename (dt_info);
+	} else {
+		desktop = NULL;
 	}
-	g_key_file_free (keyfile);
-	g_free (desktop);
+
+	if (desktop) {
+		GKeyFile *keyfile = g_key_file_new ();
+
+		if (g_key_file_load_from_file (keyfile, desktop,
+					G_KEY_FILE_KEEP_COMMENTS |
+					G_KEY_FILE_KEEP_TRANSLATIONS,
+					NULL)) {
+			gsize num_keys, i;
+			gchar **keys = g_key_file_get_keys (keyfile, "Desktop Entry", &num_keys, NULL);
+
+			for (i = 0; i < num_keys; i++) {
+				if (!g_str_has_prefix (keys[i], "Name"))
+					continue;
+
+				gchar *value = g_key_file_get_value (keyfile, "Desktop Entry", keys[i], NULL);
+				if (value) {
+					if (panel_g_utf8_strstrcase (value, name) != NULL) {
+						ret = TRUE;
+					}
+				}
+				g_free (value);
+			}
+			g_strfreev (keys);
+		}
+		g_key_file_free (keyfile);
+	}
+
+	g_object_unref (dt_info);
 
 	return ret;
 }
@@ -520,16 +529,8 @@ search (ApplauncherWindow *window)
 			continue;
 		}
 
-		const gchar *name = g_app_info_get_name (app_info);
-		if (name && panel_g_utf8_strstrcase (name, priv->filter_text) != NULL) {
-			if (!has_application (apps, entry))
-				apps = g_slist_append (apps, entry);
-
-			continue;
-		}
-
-		const gchar *desc = g_app_info_get_description (app_info);
-		if (desc && panel_g_utf8_strstrcase (desc, priv->filter_text) != NULL) {
+		const gchar *id = g_app_info_get_id (app_info);
+		if (desktop_has_name (id, priv->filter_text)) {
 			if (!has_application (apps, entry))
 				apps = g_slist_append (apps, entry);
 
