@@ -81,6 +81,18 @@ struct _ApplauncherWindowPrivate
 G_DEFINE_TYPE_WITH_PRIVATE (ApplauncherWindow, applauncher_window, GTK_TYPE_WINDOW)
 
 
+static gchar *
+desktop_working_directory_get (const gchar *id)
+{
+	gchar *wd = NULL;
+
+	GDesktopAppInfo *dt_info = g_desktop_app_info_new (id);
+	if (dt_info) {
+		wd = g_desktop_app_info_get_string (dt_info, G_KEY_FILE_DESKTOP_KEY_PATH);
+	}
+
+	return wd;
+}
 
 static gboolean
 desktop_has_name (const gchar *id, const gchar *name)
@@ -625,7 +637,8 @@ command_is_executable (const char   *command,
 static gboolean
 launch_command (ApplauncherWindow *window,
                 const char        *command,
-                const char        *locale_command)
+                const char        *locale_command,
+                const char        *working_directory)
 {
 	GdkScreen  *screen;
 	gboolean    result;
@@ -657,7 +670,7 @@ launch_command (ApplauncherWindow *window,
 
 	screen = gtk_window_get_screen (GTK_WINDOW (window));
 
-	result = xfce_spawn_on_screen (screen, NULL,
+	result = xfce_spawn_on_screen (screen, working_directory,
                                    argv, NULL, G_SPAWN_SEARCH_PATH,
                                    TRUE, gtk_get_current_event_time (),
                                    NULL, &error);
@@ -723,8 +736,12 @@ on_appitem_button_clicked_cb (GtkButton *button, gpointer data)
     /* if it's an absolute path or not a URI, it's possibly an executable,
      * so try it before displaying it */
 	gchar *scheme = g_uri_parse_scheme (disk);
-    if (g_path_is_absolute (disk) || !scheme)
-		launch_command (window, command, disk);
+    if (g_path_is_absolute (disk) || !scheme) {
+		const gchar *id = g_app_info_get_id (app_info);
+		gchar *wd = desktop_working_directory_get (id);
+		launch_command (window, command, disk, wd);
+		g_free (wd);
+	}
 
 	g_free (command);
 	g_free (disk);
