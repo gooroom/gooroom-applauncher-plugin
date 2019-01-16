@@ -1,3 +1,14 @@
+gooroom-applauncher-plugin (0.2.5+grm1u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [95a69d49] Apply settings for application blacklist
+  * [0a11ebc5] Fixed bug for searching applications
+  * [2f89a0dd] Setting the working directory when running the application
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Wed, 16 Jan 2019 10:20:08 +0900
+
 gooroom-applauncher-plugin (0.2.4+grm1u1) unstable; urgency=medium
 
   [ cjheo ]
