@@ -1002,16 +1002,6 @@ applauncher_window_init (ApplauncherWindow *window)
 		priv->icon_size = 64;
 	}
 
-	GSList *blacklist = get_application_blacklist ();
-	priv->apps = get_all_applications (blacklist);
-	g_slist_free_full (blacklist, (GDestroyNotify)g_free);
-
-	GSList *l = NULL;
-	for (l = priv->apps; l; l = l->next) {
-		if (!has_application (priv->filtered_apps, l->data))
-			priv->filtered_apps = g_slist_append (priv->filtered_apps, l->data);
-	}
-
 	if ((area.width / area.height) < 1.4) { // Monitor 5:4, 4:3
 		priv->grid_x = 4;
 		priv->grid_y = 4;
@@ -1031,11 +1021,21 @@ applauncher_window_init (ApplauncherWindow *window)
 
 	populate_grid (window);
 
+	GSList *blacklist = get_application_blacklist ();
+	priv->apps = get_all_applications (blacklist);
+	g_slist_free_full (blacklist, (GDestroyNotify)g_free);
+
+	GSList *l = NULL;
+	for (l = priv->apps; l; l = l->next) {
+		if (!has_application (priv->filtered_apps, l->data))
+			priv->filtered_apps = g_slist_append (priv->filtered_apps, l->data);
+	}
+
 	priv->pages = applauncher_indicator_new ();
 	gtk_box_set_spacing (GTK_BOX (priv->pages), 36);
 	gtk_box_pack_start (GTK_BOX (priv->box_bottom), GTK_WIDGET (priv->pages), FALSE, FALSE, 0);
 
-	int total_pages = get_total_pages (window, priv->apps);
+	int total_pages = get_total_pages (window, priv->filtered_apps);
 	if (total_pages > 1) {
 		gtk_widget_show (GTK_WIDGET (priv->pages));
 
