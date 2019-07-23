@@ -1,3 +1,12 @@
+gooroom-applauncher-plugin (0.2.7+grm1u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [d321e3ee] Always keep the launcher window on top (Bug #854)
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Tue, 23 Jul 2019 18:32:14 +0900
+
 gooroom-applauncher-plugin (0.2.6+grm1u1) unstable; urgency=medium
 
   [ cjheo ]
