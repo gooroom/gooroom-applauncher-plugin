@@ -1,12 +1,13 @@
 # Korean translations for gooroom-applauncher-plugin package.
-# Copyright (C) 2016 THE gooroom-applauncher-plugin'S COPYRIGHT HOLDER
+# Copyright (C) 2015-2019 THE gooroom-applauncher-plugin'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the gooroom-applauncher-plugin package.
 #
+#, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: gooroom-applauncher-plugin 0.1.0\n"
+"Project-Id-Version: gooroom-applauncher-plugin 0.2.7\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2018-03-10 01:53+0900\n"
+"POT-Creation-Date: 2019-10-18 13:21+0900\n"
 "PO-Revision-Date: 2018-03-10 01:53+0900\n"
 "Language-Team: Korean\n"
 "Language: ko\n"
@@ -15,27 +16,33 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+#: ../panel-plugin/applauncher-plugin.desktop.in.in.h:1
 msgid "Gooroom Applauncher Plugin"
 msgstr "프로그램 실행 플러그인"
 
+#: ../panel-plugin/applauncher-plugin.desktop.in.in.h:2
 msgid "Find and launch applications installed on your system"
 msgstr "시스템에 설치된 어플리케이션을 찾거나 실행합니다"
 
-msgid "Failed to execute program."
-msgstr "프로그램을 실행할 수 없습니다."
-
-msgid "Launch Error"
-msgstr "실행 에러"
-
-msgid "Application has no command"
-msgstr "프로그램에 명령이 없습니다"
-
-msgid "Type to search…"
-msgstr "검색하려면 입력하십시오…"
-
-msgid "Application Launching Error"
-msgstr "어플리케이션 실행 에러"
-
+#: ../panel-plugin/applauncher-window.c:680
+#: ../panel-plugin/applauncher-window.c:726
 #, c-format
 msgid "Could not run command '%s'"
 msgstr "'%s' 명령을 실행할 수 없습니다"
+
+#: ../panel-plugin/applauncher-window.c:682
+#: ../panel-plugin/applauncher-window.c:728
+msgid "Application Launching Error"
+msgstr "어플리케이션 실행 에러"
+
+#. print warning for user
+#: ../panel-plugin/xfce-spawn.c:412
+#, c-format
+msgid ""
+"Working directory \"%s\" does not exist. It won't be used when spawning \"%s"
+"\"."
+msgstr ""
+
+#: ../panel-plugin/window.ui.h:1
+msgid "Type to search…"
+msgstr "검색하려면 입력하십시오…"

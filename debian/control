@@ -2,12 +2,23 @@ Source: gooroom-applauncher-plugin
 Section: xfce
 Priority: optional
 Maintainer: Gooroom Maintainers <gooroom@gooroom.kr>
-Build-Depends: debhelper (>= 9), autotools-dev, autoconf, automake, intltool,
-               libtool, xfce4-dev-tools, libxfce4panel-2.0-dev, libglib2.0-dev,
-               libgtk-3-dev, libgnome-menu-3-dev, libstartup-notification0-dev
+Build-Depends: debhelper (>= 9),
+               autotools-dev,
+               autoconf,
+               automake,
+               intltool,
+               libtool,
+               xfce4-dev-tools,
+               libxfce4panel-2.0-dev,
+               libglib2.0-dev,
+               libgtk-3-dev,
+               libgnome-menu-3-dev,
+               libstartup-notification0-dev
 Standards-Version: 3.9.6
 
 Package: gooroom-applauncher-plugin
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Xfce4 panel plugin for finding and launching applications
+ The Gooroom Applauncher Plugin is a plugin for the Xfce panel
+ which find and launch applications installed on your system.
