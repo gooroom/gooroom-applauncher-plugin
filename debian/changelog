@@ -1,3 +1,12 @@
+gooroom-applauncher-plugin (0.2.8+grm1u1) unstable; urgency=medium
+
+  [ user ]
+  * [0bdcc6d6] Update sources regarding copyright
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Thu, 31 Oct 2019 12:10:53 +0900
+
 gooroom-applauncher-plugin (0.2.7+grm1u1) unstable; urgency=medium
 
   [ cjheo ]
