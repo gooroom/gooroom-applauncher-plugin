@@ -1,7 +1,3 @@
-dnl
-dnl gooroom-applauncher-plugin - A applauncher plugin for the Xfce panel
-dnl
-
 dnl ***************************
 dnl *** Initialize autoconf ***
 dnl ***************************
@@ -14,7 +10,6 @@ AC_REVISION([@REVISION@])
 dnl ***************************
 dnl *** Initialize automake ***
 dnl ***************************
-#AM_INIT_AUTOMAKE([1.8 dist-bzip2 tar-ustar])
 AM_INIT_AUTOMAKE([1.8 dist-xz no-dist-gzip foreign])
 AM_MAINTAINER_MODE()
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
