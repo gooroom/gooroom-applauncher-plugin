@@ -43,6 +43,7 @@ msgid ""
 "\"."
 msgstr ""
 "Working directory \"%s\" does not exist. It won't be used when spawning \"%s"
+"\"."
 
 #: ../panel-plugin/window.ui.h:1
 msgid "Type to search…"
