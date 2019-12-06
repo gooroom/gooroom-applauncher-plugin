@@ -1,3 +1,12 @@
+gooroom-applauncher-plugin (0.2.9+grm1u1) unstable; urgency=medium
+
+  [ cjheo ]
+  * [b860f805] Update source and resources regarding copyright
+
+  [ Gooroom Autobuilder ]
+
+ -- Gooroom Autobuilder <jenkins@gooroom.kr>  Fri, 06 Dec 2019 11:31:54 +0900
+
 gooroom-applauncher-plugin (0.2.8+grm1u1) unstable; urgency=medium
 
   [ user ]
